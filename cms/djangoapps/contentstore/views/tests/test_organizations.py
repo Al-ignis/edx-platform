@@ -5,16 +5,13 @@ import json
 
 from django.test import TestCase
 from django.urls import reverse
-from mock import patch
 
 from student.tests.factories import UserFactory
 from util.organizations_helpers import add_organization
 
 
-@patch.dict('django.conf.settings.FEATURES', {'ORGANIZATIONS_APP': True})
 class TestOrganizationListing(TestCase):
     """Verify Organization listing behavior."""
-    @patch.dict('django.conf.settings.FEATURES', {'ORGANIZATIONS_APP': True})
     def setUp(self):
         super(TestOrganizationListing, self).setUp()
         self.staff = UserFactory(is_staff=True)

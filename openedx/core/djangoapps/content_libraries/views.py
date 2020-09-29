@@ -36,6 +36,7 @@ from openedx.core.djangoapps.content_libraries.serializers import (
     ContentLibraryAddPermissionByEmailSerializer,
 )
 from openedx.core.lib.api.view_utils import view_auth_classes
+from util.organizations_helpers import ensure_organization
 
 User = get_user_model()
 log = logging.getLogger(__name__)
@@ -156,14 +157,15 @@ class LibraryRootView(APIView):
         # definitions elsewhere.
         data['library_type'] = data.pop('type')
         data['library_license'] = data.pop('license')
-        # Get the organization short_name out of the "key.org" pseudo-field that the serializer added:
-        org_name = data["key"]["org"]
         # Move "slug" out of the "key.slug" pseudo-field that the serializer added:
         data["slug"] = data.pop("key")["slug"]
-        try:
-            org = Organization.objects.get(short_name=org_name)
-        except Organization.DoesNotExist:
-            raise ValidationError(detail={"org": "No such organization '{}' found.".format(org_name)})
+        # Get the organization short_name out of the "key.org" pseudo-field that the serializer added:
+        org_name = data["key"]["org"]
+        if not ensure_organization(org_name):
+            raise ValidationError(
+                detail={"org": "No such organization '{}' found.".format(org_name)}
+            )
+        org = Organization.objects.get(short_name=org_name)
         try:
             result = api.create_library(org=org, **data)
         except api.LibraryAlreadyExists:

@@ -28,6 +28,7 @@ from django.utils.text import get_valid_filename
 from django.utils.translation import ugettext as _
 from opaque_keys.edx.keys import CourseKey
 from opaque_keys.edx.locator import LibraryLocator
+from organizations.api import add_organization_course, ensure_organization
 from organizations.models import OrganizationCourse
 from path import Path as path
 from pytz import UTC
@@ -45,7 +46,6 @@ from models.settings.course_metadata import CourseMetadata
 from openedx.core.djangoapps.embargo.models import CountryAccessRule, RestrictedCourse
 from openedx.core.lib.extract_tar import safetar_extractall
 from student.auth import has_course_author_access
-from util.organizations_helpers import add_organization_course, get_organization_by_short_name
 from xmodule.contentstore.django import contentstore
 from xmodule.course_module import CourseFields
 from xmodule.exceptions import SerializationError
@@ -134,7 +134,7 @@ def rerun_course(source_course_key_string, destination_course_key_string, user_i
             for country_access_rule in country_access_rules:
                 clone_instance(country_access_rule, {'restricted_course': new_restricted_course})
 
-        org_data = get_organization_by_short_name(source_course_key.org)
+        org_data = ensure_organization(source_course_key.org)
         add_organization_course(org_data, destination_course_key)
         return "succeeded"
 

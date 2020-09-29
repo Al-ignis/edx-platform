@@ -123,7 +123,7 @@ FEATURES['MILESTONES_APP'] = True
 # with any arbritrary org slug -- they would have to first make sure that
 # the organization exists in the Organization table.
 # Note that some production environments (such as studio.edx.org) do enable this flag.
-FEATURES['ORGANIZATIONS_APP'] = False
+FEATURES['ENABLE_ORGANIZATION_STRICTNESS'] = False
 
 ################################ ENTRANCE EXAMS ################################
 FEATURES['ENTRANCE_EXAMS'] = True

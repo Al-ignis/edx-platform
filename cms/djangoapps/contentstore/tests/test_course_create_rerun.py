@@ -15,7 +15,11 @@ from opaque_keys.edx.keys import CourseKey
 from contentstore.tests.utils import AjaxEnabledTestClient, parse_json
 from student.roles import CourseInstructorRole, CourseStaffRole
 from student.tests.factories import UserFactory
-from util.organizations_helpers import add_organization, get_course_organizations
+from util.organizations_helpers import (
+    add_organization,
+    get_organization_by_short_name,
+    get_course_organizations,
+)
 from xmodule.course_module import CourseFields
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.django import modulestore
@@ -114,13 +118,15 @@ class TestCourseListing(ModuleStoreTestCase):
             course = self.store.get_course(new_course_key)
             self.assertTrue(course.cert_html_view_enabled)
 
-    @patch.dict('django.conf.settings.FEATURES', {'ORGANIZATIONS_APP': False})
+    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_ORGANIZATION_STRICTNESS': False})
     @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_course_creation_without_org_app_enabled(self, store):
+    def test_course_creation_for_unknown_organization_relaxed(self, store):
         """
-        Tests course creation workflow should not create course to org
-        link if organizations_app is not enabled.
+        Tests that the course creation workflow for an unknown org
+        should create the organization and organization-course linkage in the system
+        when ENABLE_ORGANIZATION_STRICTNESS is False.
         """
+        self.assertIsNone(get_organization_by_short_name("orgX"))
         with modulestore().default_store(store):
             response = self.client.ajax_post(self.course_create_rerun_url, {
                 'org': 'orgX',
@@ -129,17 +135,20 @@ class TestCourseListing(ModuleStoreTestCase):
                 'run': '2015_T2'
             })
             self.assertEqual(response.status_code, 200)
+            self.assertIsNotNone(get_organization_by_short_name("orgX"))
             data = parse_json(response)
             new_course_key = CourseKey.from_string(data['course_key'])
             course_orgs = get_course_organizations(new_course_key)
-            self.assertEqual(course_orgs, [])
+            self.assertEqual(len(course_orgs), 1)
+            self.assertEqual(course_orgs[0]['short_name'], 'orgX')
 
-    @patch.dict('django.conf.settings.FEATURES', {'ORGANIZATIONS_APP': True})
+    @patch.dict('django.conf.settings.FEATURES', {'ENABLE_ORGANIZATION_STRICTNESS': True})
     @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_course_creation_with_org_not_in_system(self, store):
+    def test_course_creation_for_unknown_organization_strict(self, store):
         """
-        Tests course creation workflow when course organization does not exist
-        in system.
+        Tests that the course creation workflow for an unknown org
+        should raise a validation error
+        when ENABLE_ORGANIZATION_STRICTNESS is True.
         """
         with modulestore().default_store(store):
             response = self.client.ajax_post(self.course_create_rerun_url, {
@@ -152,18 +161,20 @@ class TestCourseListing(ModuleStoreTestCase):
             data = parse_json(response)
             self.assertIn(u'Organization you selected does not exist in the system', data['error'])
 
-    @patch.dict('django.conf.settings.FEATURES', {'ORGANIZATIONS_APP': True})
-    @ddt.data(ModuleStoreEnum.Type.mongo, ModuleStoreEnum.Type.split)
-    def test_course_creation_with_org_in_system(self, store):
+    @ddt.data(False, True)
+    def test_course_creation_for_known_organization(self, enable_strict_organizations):
         """
-        Tests course creation workflow when course organization exist in system.
+        Tests that the course creation workflow for a known org
+        should create the organization-course linkage in the system
+        whether or not ENABLE_ORGANIZATION_STRICTNESS is True.
         """
         add_organization({
             'name': 'Test Organization',
             'short_name': 'orgX',
             'description': 'Testing Organization Description',
         })
-        with modulestore().default_store(store):
+        strictness_override = {'ENABLE_ORGANIZATION_STRICTNESS': enable_strict_organizations}
+        with patch.dict('django.conf.settings.FEATURES', strictness_override):
             response = self.client.ajax_post(self.course_create_rerun_url, {
                 'org': 'orgX',
                 'number': 'CS101',

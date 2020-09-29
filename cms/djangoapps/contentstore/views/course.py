@@ -86,7 +86,10 @@ from util.milestones_helpers import (
     remove_prerequisite_course,
     set_prerequisite_courses
 )
-from util.organizations_helpers import add_organization_course, get_organization_by_short_name, organizations_enabled
+from util.organizations_helpers import (
+    add_organization_course,
+    ensure_organization,
+)
 from util.string_utils import _has_non_ascii_characters
 from xblock_django.api import deprecated_xblocks
 from xmodule.contentstore.content import StaticContent
@@ -883,10 +886,12 @@ def create_new_course(user, org, number, run, fields):
     Raises:
         DuplicateCourseError: Course run already exists.
     """
-    org_data = get_organization_by_short_name(org)
-    if not org_data and organizations_enabled():
-        raise ValidationError(_('You must link this course to an organization in order to continue. Organization '
-                                'you selected does not exist in the system, you will need to add it to the system'))
+    org_data = ensure_organization(org)
+    if not org_data:
+        raise ValidationError(_(
+            'You must link this course to an organization in order to continue. Organization '
+            'you selected does not exist in the system, you will need to add it to the system'
+        ))
     store_for_new_course = modulestore().default_modulestore.get_modulestore_type()
     new_course = create_new_course_in_store(store_for_new_course, user, org, number, run, fields)
     add_organization_course(org_data, new_course.id)

@@ -292,8 +292,6 @@ FEATURES = {
     # Special Exams, aka Timed and Proctored Exams
     'ENABLE_SPECIAL_EXAMS': False,
 
-    'ORGANIZATIONS_APP': False,
-
     # Show the language selector in the header
     'SHOW_HEADER_LANGUAGE_SELECTOR': False,
 
@@ -340,6 +338,18 @@ FEATURES = {
     'SHOW_FOOTER_LANGUAGE_SELECTOR': False,
     'ENABLE_ENROLLMENT_RESET': False,
     'DISABLE_MOBILE_COURSE_AVAILABLE': False,
+
+    # .. toggle_name: ENABLE_ORGANIZATION_STRICTNESS
+    # .. toggle_implementation: DjangoSetting
+    # .. toggle_default: False
+    # .. toggle_description: Set to True to enforce that Organization references in new
+    #   content (such as the "org" slugs on course runs and content libraries) must refer
+    #   to Organizations already existing in the database. If left as False, then creating
+    #   content referencing an unknown Organization will cause a new Organization to
+    #   automatically be created.
+    # .. toggle_use_cases: open_edx
+    # .. toggle_creation_date: 2020-09-29
+    'ENABLE_ORGANIZATION_STRICTNESS': False,
 
     # .. toggle_name: ENABLE_CHANGE_USER_PASSWORD_ADMIN
     # .. toggle_implementation: DjangoSetting
@@ -1523,6 +1533,9 @@ INSTALLED_APPS = [
     'openedx.core.djangoapps.content.learning_sequences.apps.LearningSequencesConfig',
 
     'ratelimitbackend',
+
+    # Database-backed Organizations App (http://github.com/edx/edx-organizations)
+    'organizations',
 ]
 
 
@@ -1650,9 +1663,6 @@ OPTIONAL_APPS = (
 
     # edxval
     ('edxval', 'openedx.core.djangoapps.content.course_overviews.apps.CourseOverviewsConfig'),
-
-    # Organizations App (http://github.com/edx/edx-organizations)
-    ('organizations', None),
 
     # Enterprise App (http://github.com/edx/edx-enterprise)
     ('enterprise', None),
