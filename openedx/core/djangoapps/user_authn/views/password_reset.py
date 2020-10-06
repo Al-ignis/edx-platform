@@ -12,7 +12,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.views import INTERNAL_RESET_SESSION_TOKEN, PasswordResetConfirmView
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.validators import ValidationError
-from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseForbidden, HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -651,6 +651,9 @@ def password_reset_token_validate(request):
             return JsonResponse({'is_valid': is_valid})
 
         user = User.objects.get(id=uid_int)
+        if UserRetirementRequest.has_user_requested_retirement(user):
+            return JsonResponse({'is_valid': is_valid})
+
         is_valid = default_token_generator.check_token(user, token[1])
         if is_valid and not user.is_active:
             user.is_active = True
@@ -659,3 +662,54 @@ def password_reset_token_validate(request):
         AUDIT_LOG.exception("Invalid password reset confirm token")
 
     return JsonResponse({'is_valid': is_valid})
+
+
+def _is_token_available(**kwargs):
+    """
+    Helper function to test that token
+    is available in view reset url
+    """
+    uidb36 = kwargs.get('uidb36')
+    token = kwargs.get('token')
+
+    if not uidb36 or not token:
+        return False
+    try:
+        _ = base36_to_int(uidb36)
+    except ValueError:
+        return False
+    return True
+
+
+@require_POST
+@ensure_csrf_cookie
+def password_reset_logistration(request, **kwargs):
+    """Reset learner password using passed token and new credentials"""
+
+    reset_status = False
+    uidb36 = kwargs.get('uidb36')
+    token = kwargs.get('token')
+
+    if not _is_token_available(**kwargs):
+        AUDIT_LOG.exception("Invalid password reset confirm token")
+        return JsonResponse({'reset_status': reset_status})
+
+    uid_int = base36_to_int(uidb36)
+    request.POST = request.POST.copy()
+    request.POST['new_password1'] = normalize_password(request.POST['new_password1'])
+    request.POST['new_password2'] = normalize_password(request.POST['new_password2'])
+
+    password = request.POST['new_password1']
+    try:
+        user = User.objects.get(id=uid_int)
+        validate_password(password, user=user)
+        form = SetPasswordForm(user, request.POST)
+        if default_token_generator.check_token(user, token) and form.is_valid():
+            form.save()
+            reset_status = True
+    except ValidationError:
+        AUDIT_LOG.exception("Password validation failed")
+    except Exception:   # pylint: disable=broad-except
+        AUDIT_LOG.exception("Setting new password failed")
+
+    return JsonResponse({'reset_status': reset_status})
