@@ -19,6 +19,7 @@ from pkg_resources import resource_string
 from pytz import UTC
 from six import text_type
 from web_fragments.fragment import Fragment
+
 from xblock.completable import XBlockCompletionMode
 from xblock.core import XBlock
 from xblock.exceptions import NoSuchServiceError
@@ -189,6 +190,7 @@ class ProctoringFields(object):
 @XBlock.needs('user')
 @XBlock.needs('bookmarks')
 @XBlock.needs('i18n')
+@XBlock.wants('content_type_gating')
 class SequenceModule(SequenceFields, ProctoringFields, XModule):
     """
     Layout module which lays out content in a temporal sequence
@@ -279,17 +281,6 @@ class SequenceModule(SequenceFields, ProctoringFields, XModule):
             datetime.now(UTC) < date
         )
 
-    def _has_access_check(self, *args):
-        """
-        Helper method created for the following method
-        gate_sequence_if_it_is_a_timed_exam_and_contains_content_type_gated_problems
-        Created to simplify the relevant unit tests
-        This way the has_access call can be patched without impacting other has_access calls made during the test
-        """
-        # importing here to avoid a circular import
-        from lms.djangoapps.courseware.access import has_access
-        return has_access(*args)
-
     def gate_sequence_if_it_is_a_timed_exam_and_contains_content_type_gated_problems(self):
         """
         Problem:
@@ -318,32 +309,30 @@ class SequenceModule(SequenceFields, ProctoringFields, XModule):
         Note that this will break compatability with using sequences outside of edx-platform
         but we are ok with this for now
         """
-        # importing here to avoid a circular import
-        from openedx.features.content_type_gating.models import ContentTypeGatingConfig
-
         if not self.is_time_limited:
             return
 
         try:
             user = User.objects.get(id=self.runtime.user_id)
-            if not ContentTypeGatingConfig.enabled_for_enrollment(user=user, course_key=self.runtime.course_id):
+            course_id = self.runtime.course_id
+            content_type_gating_service = self.runtime.service(self, 'content_type_gating')
+            if not (content_type_gating_service and
+                    content_type_gating_service.enabled_for_enrollment(user=user, course_key=course_id)):
+                self.gated_sequence_fragment = None
                 return
 
+            # If any block inside a timed exam has been gated by content type gating
+            # then gate the entire sequence.
+            # In order to avoid scope creep, we are not handling other potential causes
+            # of access failures as part of this work.
             for vertical in self.get_children():
                 for block in vertical.get_children():
-                    problem_eligible_for_content_gating = (getattr(block, 'graded', False) and
-                                                           block.has_score and
-                                                           getattr(block, 'weight', 0) != 0)
-                    if problem_eligible_for_content_gating:
-                        access = self._has_access_check(user, 'load', block, self.course_id)
-                        # If any block has been gated by content type gating inside the sequence
-                        # and the sequence is a timed exam, then gate the entire sequence.
-                        # In order to avoid scope creep, we are not handling other potential causes
-                        # of access failures as part of this work.
-                        if not access and access.error_code == 'incorrect_user_group':
-                            self.gated_sequence_fragment = access.user_fragment
-                            break
-                        self.gated_sequence_fragment = None  # Don't gate other cases
+                    gate_fragment = content_type_gating_service.content_type_gate_for_block(user, block, course_id)
+                    if gate_fragment is not None:
+                        self.gated_sequence_fragment = gate_fragment
+                        return
+                    else:
+                        self.gated_sequence_fragment = None
         except User.DoesNotExist:
             pass
 
