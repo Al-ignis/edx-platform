@@ -226,7 +226,7 @@ def check_verify_status_by_course(user, course_enrollments):
 POST_AUTH_PARAMS = ('course_id', 'enrollment_action', 'course_mode', 'email_opt_in', 'purchase_workflow')
 
 
-def get_next_url_for_login_page(request, redirect_to_logistration=False):
+def get_next_url_for_login_page(request, add_host_in_redirect=False):
     """
     Determine the URL to redirect to following login/registration/third_party_auth
 
@@ -249,6 +249,7 @@ def get_next_url_for_login_page(request, redirect_to_logistration=False):
         request_params=request_params,
         request_is_https=request.is_secure(),
     )
+    lms_root_url = configuration_helpers.get_value('LMS_ROOT_URL', settings.LMS_ROOT_URL)
     if not redirect_to:
         if settings.ROOT_URLCONF == 'lms.urls':
             login_redirect_url = configuration_helpers.get_value('DEFAULT_REDIRECT_AFTER_LOGIN')
@@ -268,22 +269,23 @@ def get_next_url_for_login_page(request, redirect_to_logistration=False):
                 # Tries reversing the LMS dashboard if the url doesn't exist
                 redirect_to = reverse('dashboard')
 
-            if redirect_to_logistration:
-                redirect_to = settings.LMS_ROOT_URL + reverse('dashboard')
+            if add_host_in_redirect:
+                redirect_to = lms_root_url + redirect_to
 
         elif settings.ROOT_URLCONF == 'cms.urls':
             redirect_to = reverse('home')
 
-            if redirect_to_logistration:
-                redirect_to = settings.CMS_BASE + reverse('home')
+            if add_host_in_redirect:
+                scheme = "https" if settings.HTTPS == "on" else "http"
+                redirect_to = '{}://{}{}'.format(scheme, settings.CMS_BASE, redirect_to)
 
     if any(param in request_params for param in POST_AUTH_PARAMS):
         # Before we redirect to next/dashboard, we need to handle auto-enrollment:
         params = [(param, request_params[param]) for param in POST_AUTH_PARAMS if param in request_params]
         params.append(('next', redirect_to))  # After auto-enrollment, user will be sent to payment page or to this URL
         redirect_to = '{}?{}'.format(reverse('finish_auth'), urllib.parse.urlencode(params))
-        if redirect_to_logistration:
-            redirect_to = '{}{}'.format(settings.LMS_ROOT_URL, redirect_to)
+        if add_host_in_redirect:
+            redirect_to = '{}{}'.format(lms_root_url, redirect_to)
         # Note: if we are resuming a third party auth pipeline, then the next URL will already
         # be saved in the session as part of the pipeline state. That URL will take priority
         # over this one.
